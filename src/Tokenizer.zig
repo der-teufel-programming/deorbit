@@ -16,6 +16,7 @@ pub const Token = struct {
         float,
         label,
         comma,
+        register,
     };
 
     pub const Loc = struct {
@@ -83,6 +84,9 @@ const State = enum {
     number_sex,
     number_flt,
     identifier,
+    register_start,
+    register_r,
+    register,
 };
 
 pub fn next(t: *Tokenizer, src: [:0]const u8) Token {
@@ -111,6 +115,7 @@ pub fn next(t: *Tokenizer, src: [:0]const u8) Token {
                     // skip whitespace
                     ' ', '\t', '\n' => result.loc.start += 1,
                     '@' => state = .builtin_start,
+                    '%' => state = .register_start,
                     '0' => state = .number,
                     '1'...'9' => state = .number_dec,
                     'a'...'z', 'A'...'Z' => state = .identifier,
@@ -135,6 +140,91 @@ pub fn next(t: *Tokenizer, src: [:0]const u8) Token {
                     ',', ' ', '\n', '\t' => {
                         result.tag = .identifier;
                         result.loc.end = t.idx;
+                        break;
+                    },
+                    else => {
+                        t.idx += 1;
+                        result.tag = .invalid;
+                        result.loc.end = t.idx;
+                        break;
+                    },
+                }
+            },
+            .builtin_start => {
+                switch (c) {
+                    'a'...'z' => state = .builtin,
+                    else => {
+                        t.idx += 1;
+                        result.tag = .invalid;
+                        result.loc.end = t.idx;
+                        break;
+                    },
+                }
+            },
+            .builtin => {
+                switch (c) {
+                    'a'...'z', '0'...'9' => continue,
+                    ' ', '\n', '\t', 0 => {
+                        result.tag = .builtin;
+                        result.loc.end = t.idx;
+                        break;
+                    },
+                    else => {
+                        t.idx += 1;
+                        result.tag = .invalid;
+                        result.loc.end = t.idx;
+                        break;
+                    },
+                }
+            },
+            .register_start => {
+                switch (c) {
+                    'r' => state = .register_r,
+                    'i', 's', 'f' => state = .register,
+                    else => {
+                        t.idx += 1;
+                        result.tag = .invalid;
+                        result.loc.end = t.idx;
+                        break;
+                    },
+                }
+            },
+            .register_r => {
+                switch (c) {
+                    'a'...'k', 'z' => {
+                        t.idx += 1;
+                        result.tag = .register;
+                        result.loc.end = t.idx;
+                        break;
+                    },
+                    else => {
+                        t.idx += 1;
+                        result.tag = .invalid;
+                        result.loc.end = t.idx;
+                        break;
+                    },
+                }
+            },
+            .register => {
+                switch (c) {
+                    // ip, sp, fp
+                    'p' => {
+                        t.idx += 1;
+                        result.loc.end = t.idx;
+                        switch (src[t.idx - 2]) {
+                            's', 'f', 'i' => result.tag = .register,
+                            else => result.tag = .invalid,
+                        }
+                        break;
+                    },
+                    // st
+                    't' => {
+                        t.idx += 1;
+                        result.loc.end = t.idx;
+                        switch (src[t.idx - 2]) {
+                            's' => result.tag = .register,
+                            else => result.tag = .invalid,
+                        }
                         break;
                     },
                     else => {
@@ -291,33 +381,6 @@ pub fn next(t: *Tokenizer, src: [:0]const u8) Token {
                     else => continue,
                 }
             },
-            .builtin_start => {
-                switch (c) {
-                    'a'...'z' => state = .builtin,
-                    else => {
-                        t.idx += 1;
-                        result.tag = .invalid;
-                        result.loc.end = t.idx;
-                        break;
-                    },
-                }
-            },
-            .builtin => {
-                switch (c) {
-                    'a'...'z', '0'...'9' => continue,
-                    ' ', '\n', '\t', 0 => {
-                        result.tag = .builtin;
-                        result.loc.end = t.idx;
-                        break;
-                    },
-                    else => {
-                        t.idx += 1;
-                        result.tag = .invalid;
-                        result.loc.end = t.idx;
-                        break;
-                    },
-                }
-            },
         }
     } else {
         switch (state) {
@@ -456,4 +519,18 @@ test "take all of above" {
             "0xFF",
         },
     );
+}
+
+test "registers" {
+    const case =
+        \\addi %ra, 0s54, %rb
+    ;
+    try testCase(case, &.{
+        .identifier,
+        .register,
+        .comma,
+        .integer,
+        .comma,
+        .register,
+    });
 }

@@ -533,4 +533,7 @@ test "registers" {
         .comma,
         .register,
     });
+
+    const invalid_reg = "%rw";
+    try testCase(invalid_reg, &.{.invalid});
 }

@@ -1,6 +1,7 @@
 const Tokenizer = @This();
 
 idx: usize = 0,
+next_token: ?Token = null,
 
 pub const Token = struct {
     tag: Tag,
@@ -90,6 +91,11 @@ const State = enum {
 };
 
 pub fn next(t: *Tokenizer, src: [:0]const u8) Token {
+    if (t.next_token != null) {
+        const tok = t.next_token.?;
+        t.next_token = null;
+        return tok;
+    }
     var state: State = .start;
     var result: Token = .{
         .tag = .invalid,
@@ -402,6 +408,12 @@ pub fn next(t: *Tokenizer, src: [:0]const u8) Token {
     }
 
     return result;
+}
+
+pub fn peek(t: *Tokenizer, src: [:0]const u8) Token {
+    const tok = t.next(src);
+    t.next_token = tok;
+    return tok;
 }
 
 const std = @import("std");
